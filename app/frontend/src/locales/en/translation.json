@@ -34,20 +34,20 @@
     },
     "developerSettings": "Developer settings",
 
-    "chatEmptyStateTitle": "Chat with your data",
+    "chatEmptyStateTitle": "Your model and deployment concierge",
     "chatEmptyStateSubtitle": "Ask anything or try an example",
     "defaultExamples": {
         "1": "What is included in my Northwind Health Plus plan that is not in standard?",
         "2": "What happens in a performance review?",
         "3": "What does a Product Manager do?",
-        "placeholder": "Type a new question (e.g. does my plan cover annual eye exams?)"
+        "placeholder": "Type a new question (e.g. what models are great for sharing a chatbot within an Org?)"
     },
     "askTitle": "Ask your data",
     "gpt4vExamples": {
         "1": "Compare the impact of interest rates and GDP in financial markets.",
         "2": "What is the expected trend for the S&P 500 index over the next five years? Compare it to the past S&P 500 performance",
         "3": "Can you identify any correlation between oil prices and stock market trends?",
-        "placeholder": "Example: Does my plan cover annual eye exams?"
+        "placeholder": "Example: Which models are good for a finance chatbot?"
     },
     "generatingAnswer": "Generating answer",
     "citationWithColon": "Citation:",
