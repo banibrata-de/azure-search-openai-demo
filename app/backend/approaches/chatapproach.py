@@ -14,15 +14,30 @@ class ChatApproach(Approach, ABC):
         {"role": "assistant", "content": "Summarize Cryptocurrency Market Dynamics from last year"},
         {"role": "user", "content": "What are my health plans?"},
         {"role": "assistant", "content": "Show available health plans"},
-    ]
+        ]
     NO_RESPONSE = "0"
 
-    follow_up_questions_prompt_content = """Generate 3 very brief follow-up questions that the user would likely ask next.
-    Enclose the follow-up questions in double angle brackets. Example:
-    <<Are there exclusions for prescriptions?>>
-    <<Which pharmacies can be ordered from?>>
-    <<What is the limit for over-the-counter medication?>>
-    Do no repeat questions that have already been asked.
+    follow_up_questions_prompt_content = """
+    Generate 3-4 insightful follow-up questions that help users dive deeper into the model or deployment information. These questions should:
+    - Explore nuanced aspects not fully addressed in the initial query
+    - Encourage more specific exploration of model capabilities or deployment details
+    - Be directly relevant to the context of the original search
+    - Provide clear paths for further investigation
+
+    Guidelines for follow-up questions:
+    - Focus on actionable, specific inquiries
+    - Avoid general or overly broad questions
+    - Highlight potential decision-making criteria
+    - Demonstrate advanced understanding of AI model selection and deployment
+
+    Example Formats:
+    - Comparative insights: "How does [Model X] compare to [Similar Model] in [Specific Capability]?"
+    - Performance details: "What are the precise performance benchmarks for [Model/Deployment Type]?"
+    - Cost and scalability: "What are the incremental costs for scaling this model's deployment?"
+    - Practical constraints: "What specific compliance or regulatory considerations apply?"
+
+    Tailor these questions to showcase depth of knowledge and facilitate user's decision-making process.
+
     Make sure the last question ends with ">>".
     """
 
@@ -57,23 +72,74 @@ class ChatApproach(Approach, ABC):
         else:
             return override_prompt.format(follow_up_questions_prompt=follow_up_questions_prompt)
 
-    def get_search_query(self, chat_completion: ChatCompletion, user_query: str):
+    def get_search_queries(self, chat_completion: ChatCompletion, user_query: str) -> dict[str, str]:
+        """
+        Intelligently determine search queries for both model catalog and deployments indices.
+        
+        Args:
+            chat_completion (ChatCompletion): The AI model's response
+            user_query (str): Original user query
+        
+        Returns:
+            Dict[str, str]: A dictionary with search queries for each index
+        """
         response_message = chat_completion.choices[0].message
+        search_queries = {
+            "models_metadata": "",
+            "deployments": ""
+    }
 
+        # If tool calls are present, extract specific search queries
         if response_message.tool_calls:
             for tool in response_message.tool_calls:
                 if tool.type != "function":
                     continue
+                
                 function = tool.function
-                if function.name == "search_sources":
+                try:
                     arg = json.loads(function.arguments)
-                    search_query = arg.get("search_query", self.NO_RESPONSE)
-                    if search_query != self.NO_RESPONSE:
-                        return search_query
-        elif query_text := response_message.content:
-            if query_text.strip() != self.NO_RESPONSE:
-                return query_text
-        return user_query
+                    search_query = arg.get("search_query", "")
+                    
+                    if function.name == "search_sources_model_catalog":
+                        search_queries["models_metadata"] = search_query
+                    elif function.name == "search_sources_deployments":
+                        search_queries["deployments"] = search_query
+                except json.JSONDecodeError:
+                    # Handle potential JSON parsing errors
+                    pass
+
+        # If no tool calls or incomplete tool calls, use a heuristic approach
+        if not search_queries["models_metadata"] and not search_queries["deployments"]:
+            # Determine which indices to search based on query keywords
+            model_keywords = [
+                "model", "performance", "capability", "type", "feature", 
+                "architecture", "specification", "characteristic"
+            ]
+            deployment_keywords = [
+                "cost", "pricing", "deployment", "region", "availability", 
+                "azure", "infrastructure", "service", "plan"
+            ]
+
+            # Check for keywords to determine search scope
+            model_match = any(keyword in user_query.lower() for keyword in model_keywords)
+            deployment_match = any(keyword in user_query.lower() for keyword in deployment_keywords)
+
+            # If both types of keywords are present, search both indices
+            if model_match and deployment_match:
+                search_queries["models_metadata"] = user_query
+                search_queries["deployments"] = user_query
+            # If only model keywords, search model catalog
+            elif model_match:
+                search_queries["models_metadata"] = user_query
+            # If only deployment keywords, search deployments
+            elif deployment_match:
+                search_queries["deployments"] = user_query
+            # Default to searching both if no clear indication
+            else:
+                search_queries["models_metadata"] = user_query
+                search_queries["deployments"] = user_query
+
+        return search_queries
 
     def extract_followup_questions(self, content: Optional[str]):
         if content is None:

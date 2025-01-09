@@ -55,13 +55,35 @@ class ChatReadRetrieveReadApproach(ChatApproach):
 
     @property
     def system_message_chat_conversation(self):
-        return """Assistant helps the company employees with their healthcare plan questions, and questions about the employee handbook. Be brief in your answers.
-        Answer ONLY with the facts listed in the list of sources below. If there isn't enough information below, say you don't know. Do not generate answers that don't use the sources below. If asking a clarifying question to the user would help, ask the question.
-        If the question is not in English, answer in the language used in the question.
-        Each source has a name followed by colon and the actual information, always include the source name for each fact you use in the response. Use square brackets to reference the source, for example [info1.txt]. Don't combine sources, list each source separately, for example [info1.txt][info2.pdf].
-        {follow_up_questions_prompt}
-        {injected_prompt}
-        """
+        return  """
+                You are an AI assistant specializing in retrieving and synthesizing information about AI models and their deployments. 
+
+                Tool Usage Guidelines:
+                - Carefully analyze the user's query to determine the most appropriate search indices
+                - Use search_sources_model_catalog when the query focuses on:
+                * Model capabilities
+                * Technical specifications
+                * Performance characteristics
+                * Comparative model insights
+
+                - Use search_sources_deployments when the query involves:
+                * Pricing and cost structures
+                * Deployment regions
+                * Infrastructure requirements
+                * Service availability
+
+                - If the query requires comprehensive understanding, use BOTH search indices
+                - Formulate precise, targeted search queries that capture the essence of the user's information need
+                - Ensure search queries are specific and extract maximum relevant information
+
+                Examples:
+                1. "Compare GPT-4 and Claude 3" → Use model_catalog
+                2. "What are the Azure deployment costs for large language models?" → Use deployments
+                3. "I need a model for medical research with specific compliance requirements" → Use BOTH indices
+
+                {follow_up_questions_prompt}
+                {injected_prompt}
+                """
 
     @overload
     async def run_until_final_call(
@@ -107,19 +129,46 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             {
                 "type": "function",
                 "function": {
-                    "name": "search_sources",
-                    "description": "Retrieve sources from the Azure AI Search index",
+                    "name": "search_sources_model_catalog",
+                    "description": "Comprehensive search across AI model metadata. Use when seeking detailed information about AI models including:\n" +
+                    "- Specific model capabilities and performance metrics\n" +
+                    "- Technical specifications and architectural details\n" +
+                    "- Comparative analysis of model characteristics\n" +
+                    "- Supported features and use cases\n" +
+                    "Ideal for queries about model types, performance, technical capabilities, and comparative insights.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "search_query": {
                                 "type": "string",
-                                "description": "Query string to retrieve documents from azure search eg: 'Health care plan'",
+                                "description": "Precise query focusing on model-specific metadata. Should capture the nuanced information needed about AI models."
                             }
                         },
-                        "required": ["search_query"],
-                    },
-                },
+                        "required": ["search_query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_sources_deployments",
+                    "description": "Targeted search for AI model deployment information. Use when investigating:\n" +
+                    "- Deployment cost structures and pricing models\n" +
+                    "- Regional availability and infrastructure support\n" +
+                    "- Azure-specific deployment configurations\n" +
+                    "- Operational constraints and service levels\n" +
+                    "Best for queries about deployment logistics, costs, and regional considerations.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "search_query": {
+                                "type": "string",
+                                "description": "Precise query focusing on deployment-specific information across Azure infrastructure."
+                            }
+                        },
+                        "required": ["search_query"]
+                    }
+                }
             }
         ]
 
@@ -147,30 +196,34 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             seed=seed,
         )
 
-        query_text = self.get_search_query(chat_completion, original_user_query)
+        search_queries = self.get_search_queries(chat_completion, original_user_query)
 
         # STEP 2: Retrieve relevant documents from the search index with the GPT optimized query
-
+        sources_content = []
         # If retrieval mode includes vectors, compute an embedding for the query
-        vectors: list[VectorQuery] = []
-        if use_vector_search:
-            vectors.append(await self.compute_text_embedding(query_text))
+        for  source_name, query_text in search_queries.items():
+            vectors: list[VectorQuery] = []
+            if use_vector_search:
+                vectors.append(await self.compute_text_embedding(query_text))
+            if query_text != "":
+                results = await self.search(
+                    top,
+                    query_text,
+                    filter,
+                    vectors,
+                    use_text_search,
+                    use_vector_search,
+                    use_semantic_ranker,
+                    use_semantic_captions,
+                    minimum_search_score,
+                    minimum_reranker_score,
+                    "modelcat1" if source_name == "models_metadata" else "deployments",
+                )
 
-        results = await self.search(
-            top,
-            query_text,
-            filter,
-            vectors,
-            use_text_search,
-            use_vector_search,
-            use_semantic_ranker,
-            use_semantic_captions,
-            minimum_search_score,
-            minimum_reranker_score,
-        )
-
-        sources_content = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
-        content = "\n".join(sources_content)
+                _content = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
+                content = "\n".join(_content)
+                sources_content.append(f"\n--- {source_name.upper()} SOURCE ---")
+                sources_content.extend(sources_content)
 
         # STEP 3: Generate a contextual and content specific answer using the search results and chat history
 

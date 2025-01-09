@@ -147,9 +147,12 @@ class Approach(ABC):
         use_semantic_captions: bool,
         minimum_search_score: Optional[float],
         minimum_reranker_score: Optional[float],
+        index_name: Optional[str],
     ) -> List[Document]:
         search_text = query_text if use_text_search else ""
         search_vectors = vectors if use_vector_search else []
+        if index_name:
+            self.search_client._index_name = index_name
         if use_semantic_ranker:
             results = await self.search_client.search(
                 search_text=search_text,
@@ -160,7 +163,7 @@ class Approach(ABC):
                 query_type=QueryType.SEMANTIC,
                 query_language=self.query_language,
                 query_speller=self.query_speller,
-                semantic_configuration_name="default",
+                semantic_configuration_name="azureml-default",
                 semantic_query=query_text,
             )
         else:
@@ -178,7 +181,7 @@ class Approach(ABC):
                     Document(
                         id=document.get("id"),
                         content=document.get("content"),
-                        embedding=document.get("embedding"),
+                        embedding=document.get("contentVector"),
                         image_embedding=document.get("imageEmbedding"),
                         category=document.get("category"),
                         sourcepage=document.get("sourcepage"),
@@ -250,7 +253,7 @@ class Approach(ABC):
             **dimensions_args,
         )
         query_vector = embedding.data[0].embedding
-        return VectorizedQuery(vector=query_vector, k_nearest_neighbors=50, fields="embedding")
+        return VectorizedQuery(vector=query_vector, k_nearest_neighbors=50, fields="contentVector")
 
     async def compute_image_embedding(self, q: str):
         endpoint = urljoin(self.vision_endpoint, "computervision/retrieval:vectorizeText")

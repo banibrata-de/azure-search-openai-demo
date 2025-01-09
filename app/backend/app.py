@@ -413,8 +413,8 @@ async def setup_clients():
     AZURE_STORAGE_CONTAINER = os.environ["AZURE_STORAGE_CONTAINER"]
     AZURE_USERSTORAGE_ACCOUNT = os.environ.get("AZURE_USERSTORAGE_ACCOUNT")
     AZURE_USERSTORAGE_CONTAINER = os.environ.get("AZURE_USERSTORAGE_CONTAINER")
-    AZURE_SEARCH_SERVICE = os.environ["AZURE_SEARCH_SERVICE"]
-    AZURE_SEARCH_INDEX = os.environ["AZURE_SEARCH_INDEX"]
+    AZURE_SEARCH_SERVICE = "dribuddy" # os.environ["AZURE_SEARCH_SERVICE"]
+    AZURE_SEARCH_INDEX = "deployments" # os.environ["AZURE_SEARCH_INDEX"]
     # Shared by all OpenAI deployments
     OPENAI_HOST = os.getenv("OPENAI_HOST", "azure")
     OPENAI_CHATGPT_MODEL = os.environ["AZURE_OPENAI_CHATGPT_MODEL"]
