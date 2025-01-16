@@ -126,28 +126,28 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         user_query_request = "Generate search query for: " + original_user_query
 
         tools: List[ChatCompletionToolParam] = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_sources_model_catalog",
-                    "description": "Comprehensive search across AI model metadata. Use when seeking detailed information about AI models including:\n" +
-                    "- Specific model capabilities and performance metrics\n" +
-                    "- Technical specifications and architectural details\n" +
-                    "- Comparative analysis of model characteristics\n" +
-                    "- Supported features and use cases\n" +
-                    "Ideal for queries about model types, performance, technical capabilities, and comparative insights.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "search_query": {
-                                "type": "string",
-                                "description": "Precise query focusing on model-specific metadata. Should capture the nuanced information needed about AI models."
-                            }
-                        },
-                        "required": ["search_query"]
-                    }
-                }
-            },
+            # {
+            #     "type": "function",
+            #     "function": {
+            #         "name": "search_sources_model_catalog",
+            #         "description": "Comprehensive search across AI model metadata. Use when seeking detailed information about AI models including:\n" +
+            #         "- Specific model capabilities and performance metrics\n" +
+            #         "- Technical specifications and architectural details\n" +
+            #         "- Comparative analysis of model characteristics\n" +
+            #         "- Supported features and use cases\n" +
+            #         "Ideal for queries about model types, performance, technical capabilities, and comparative insights.",
+            #         "parameters": {
+            #             "type": "object",
+            #             "properties": {
+            #                 "search_query": {
+            #                     "type": "string",
+            #                     "description": "Precise query focusing on model-specific metadata. Should capture the nuanced information needed about AI models."
+            #                 }
+            #             },
+            #             "required": ["search_query"]
+            #         }
+            #     }
+            # },
             {
                 "type": "function",
                 "function": {
@@ -170,7 +170,56 @@ class ChatReadRetrieveReadApproach(ChatApproach):
                     }
                 }
             }
-        ]
+,
+   {
+    "type": "function",
+    "function": {
+        "name": "map_query_to_categories",
+        "description": "It helps creating filters with categories on the model catalog page. Maps user queries to model filter categories based on predefined values. Use when users want to filter AI models by category.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "object",
+                    "properties": {
+                        "collections": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Model providers and companies (aoai, meta, mistral, etc.)"
+                        },
+                        "inferenceTasks": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Types of inference tasks (embeddings, text-generation, chat-completion, etc.)"
+                        },
+                        "deploymentTypes": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Available deployment types (maap-inference, serverless-inference)"
+                        },
+                        "fineTuningTasks": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Supported fine-tuning tasks"
+                        },
+                        "industryFilter": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Industry-specific filters"
+                        },
+                        "Licenses": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Available license types"
+                        }
+                    }
+                }
+            },
+            "required": ["categories"]
+        }
+    }
+}
+]
 
         # STEP 1: Generate an optimized keyword search query based on the chat history and the last question
         query_response_token_limit = 100
@@ -178,7 +227,7 @@ class ChatReadRetrieveReadApproach(ChatApproach):
             model=self.chatgpt_model,
             system_prompt=self.query_prompt_template,
             tools=tools,
-            few_shots=self.query_prompt_few_shots,
+            #few_shots=self.query_prompt_few_shots,
             past_messages=messages[:-1],
             new_user_content=user_query_request,
             max_tokens=self.chatgpt_token_limit - query_response_token_limit,
@@ -197,101 +246,108 @@ class ChatReadRetrieveReadApproach(ChatApproach):
         )
 
         search_queries = self.get_search_queries(chat_completion, original_user_query)
+        new_messages = ""
 
-        # STEP 2: Retrieve relevant documents from the search index with the GPT optimized query
-        sources_content = []
-        # If retrieval mode includes vectors, compute an embedding for the query
-        for  source_name, query_text in search_queries.items():
-            vectors: list[VectorQuery] = []
-            if use_vector_search:
-                vectors.append(await self.compute_text_embedding(query_text))
-            if query_text != "":
-                results = await self.search(
-                    top,
-                    query_text,
-                    filter,
-                    vectors,
-                    use_text_search,
-                    use_vector_search,
-                    use_semantic_ranker,
-                    use_semantic_captions,
-                    minimum_search_score,
-                    minimum_reranker_score,
-                    "modelcat1" if source_name == "models_metadata" else "deployments",
-                )
+        if "map_query_to_categories" not in search_queries.keys():
+            # STEP 2: Retrieve relevant documents from the search index with the GPT optimized query
+            sources_content = []
+            # If retrieval mode includes vectors, compute an embedding for the query
+            for  source_name, query_text in search_queries.items():
+                vectors: list[VectorQuery] = []
+                if use_vector_search:
+                    vectors.append(await self.compute_text_embedding(query_text))
+                if query_text != "":
+                    results = await self.search(
+                        top,
+                        query_text,
+                        filter,
+                        vectors,
+                        use_text_search,
+                        use_vector_search,
+                        use_semantic_ranker,
+                        use_semantic_captions,
+                        minimum_search_score,
+                        minimum_reranker_score,
+                        "modelcat1" if source_name == "models_metadata" else "deployments",
+                    )
 
-                _content = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
-                content = "\n".join(_content)
-                sources_content.append(f"\n--- {source_name.upper()} SOURCE ---")
-                sources_content.extend(sources_content)
+                    _content = self.get_sources_content(results, use_semantic_captions, use_image_citation=False)
+                    content = "\n".join(_content)
+                    sources_content.append(f"\n--- {source_name.upper()} SOURCE ---")
+                    sources_content.extend(sources_content)
 
-        # STEP 3: Generate a contextual and content specific answer using the search results and chat history
+            # STEP 3: Generate a contextual and content specific answer using the search results and chat history
 
-        # Allow client to replace the entire prompt, or to inject into the exiting prompt using >>>
-        system_message = self.get_system_prompt(
-            overrides.get("prompt_template"),
-            self.follow_up_questions_prompt_content if overrides.get("suggest_followup_questions") else "",
-        )
+            # Allow client to replace the entire prompt, or to inject into the exiting prompt using >>>
+            system_message = self.get_system_prompt(
+                overrides.get("prompt_template"),
+                self.follow_up_questions_prompt_content if overrides.get("suggest_followup_questions") else "",
+            )
 
-        response_token_limit = 1024
-        messages = build_messages(
-            model=self.chatgpt_model,
-            system_prompt=system_message,
-            past_messages=messages[:-1],
-            # Model does not handle lengthy system messages well. Moving sources to latest user conversation to solve follow up questions prompt.
-            new_user_content=original_user_query + "\n\nSources:\n" + content,
-            max_tokens=self.chatgpt_token_limit - response_token_limit,
-            fallback_to_default=self.ALLOW_NON_GPT_MODELS,
-        )
+            response_token_limit = 1024
+            messages = build_messages(
+                model=self.chatgpt_model,
+                system_prompt=system_message,
+                past_messages=messages[:-1],
+                # Model does not handle lengthy system messages well. Moving sources to latest user conversation to solve follow up questions prompt.
+                new_user_content=original_user_query + "\n\nSources:\n" + content,
+                max_tokens=self.chatgpt_token_limit - response_token_limit,
+                fallback_to_default=self.ALLOW_NON_GPT_MODELS,
+            )
+            new_messages = messages
+            data_points = {"text": sources_content}
 
-        data_points = {"text": sources_content}
+
+
+        else:
+           new_messages = self.get_category_mapping(search_queries["map_query_to_categories"])
 
         extra_info = {
-            "data_points": data_points,
-            "thoughts": [
-                ThoughtStep(
-                    "Prompt to generate search query",
-                    query_messages,
-                    (
-                        {"model": self.chatgpt_model, "deployment": self.chatgpt_deployment}
-                        if self.chatgpt_deployment
-                        else {"model": self.chatgpt_model}
+                "data_points": "",
+                "thoughts": [
+                    # ThoughtStep(
+                    #     "Prompt to generate search query",
+                    #     query_messages,
+                    #     (
+                    #         {"model": self.chatgpt_model, "deployment": self.chatgpt_deployment}
+                    #         if self.chatgpt_deployment
+                    #         else {"model": self.chatgpt_model}
+                    #     ),
+                    # ),
+                    # ThoughtStep(
+                    #     "Search using generated search query",
+                    #     query_text,
+                    #     {
+                    #         "use_semantic_captions": use_semantic_captions,
+                    #         "use_semantic_ranker": use_semantic_ranker,
+                    #         "top": top,
+                    #         "filter": filter,
+                    #         "use_vector_search": use_vector_search,
+                    #         "use_text_search": use_text_search,
+                    #     },
+                    # ),
+                    # ThoughtStep(
+                    #     "Search results",
+                    #     [result.serialize_for_results() for result in results],
+                    # ),
+                    ThoughtStep(
+                        "Prompt to generate answer",
+                        new_messages,
+                        (
+                            {"model": self.chatgpt_model, "deployment": self.chatgpt_deployment}
+                            if self.chatgpt_deployment
+                            else {"model": self.chatgpt_model}
+                        ),
                     ),
-                ),
-                ThoughtStep(
-                    "Search using generated search query",
-                    query_text,
-                    {
-                        "use_semantic_captions": use_semantic_captions,
-                        "use_semantic_ranker": use_semantic_ranker,
-                        "top": top,
-                        "filter": filter,
-                        "use_vector_search": use_vector_search,
-                        "use_text_search": use_text_search,
-                    },
-                ),
-                ThoughtStep(
-                    "Search results",
-                    [result.serialize_for_results() for result in results],
-                ),
-                ThoughtStep(
-                    "Prompt to generate answer",
-                    messages,
-                    (
-                        {"model": self.chatgpt_model, "deployment": self.chatgpt_deployment}
-                        if self.chatgpt_deployment
-                        else {"model": self.chatgpt_model}
-                    ),
-                ),
-            ],
-        }
+                ],
+            }
 
         chat_coroutine = self.openai_client.chat.completions.create(
             # Azure OpenAI takes the deployment name as the model name
             model=self.chatgpt_deployment if self.chatgpt_deployment else self.chatgpt_model,
-            messages=messages,
+            messages=new_messages,
             temperature=overrides.get("temperature", 0.3),
-            max_tokens=response_token_limit,
+            max_tokens=1024,
             n=1,
             stream=should_stream,
             seed=seed,
