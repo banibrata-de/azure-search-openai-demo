@@ -9,12 +9,7 @@ from approaches.approach import Approach
 
 
 class ChatApproach(Approach, ABC):
-    query_prompt_few_shots: list[ChatCompletionMessageParam] = [
-        {"role": "user", "content": "How did crypto do last year?"},
-        {"role": "assistant", "content": "Summarize Cryptocurrency Market Dynamics from last year"},
-        {"role": "user", "content": "What are my health plans?"},
-        {"role": "assistant", "content": "Show available health plans"},
-        ]
+
     NO_RESPONSE = "0"
 
     follow_up_questions_prompt_content = """
@@ -99,7 +94,8 @@ class ChatApproach(Approach, ABC):
                 try:
                     arg = json.loads(function.arguments)
                     search_query = arg.get("search_query", "")
-                    
+                    if function.name == "map_query_to_categories":
+                        return {"map_query_to_categories": user_query}                   
                     if function.name == "search_sources_model_catalog":
                         search_queries["models_metadata"] = search_query
                     elif function.name == "search_sources_deployments":
@@ -112,8 +108,7 @@ class ChatApproach(Approach, ABC):
         if not search_queries["models_metadata"] and not search_queries["deployments"]:
             # Determine which indices to search based on query keywords
             model_keywords = [
-                "model", "performance", "capability", "type", "feature", 
-                "architecture", "specification", "characteristic"
+                "model", "description", "characteristic"
             ]
             deployment_keywords = [
                 "cost", "pricing", "deployment", "region", "availability", 
@@ -140,6 +135,124 @@ class ChatApproach(Approach, ABC):
                 search_queries["deployments"] = user_query
 
         return search_queries
+    
+    def get_category_mapping(self, query: str, ) -> list[str]:
+        """Maps user query to category values using GPT."""
+        system_context = {
+        "collections": [
+        "aoai",
+        "phi",
+        "meta",
+        "gretel",
+        "mistral",
+        "nvidia",
+        "ai21",
+        "deci",
+        "nixtla",
+        "core42",
+        "cohere",
+        "databricks",
+        "snowflake",
+        "huggingface",
+        "sdaia",
+        "paige",
+        "saifr",
+        "rockwell",
+        "bayer",
+        "cerence",
+        "sightmachine",
+        "bria",
+        "nttdata"
+        ],
+        "inferenceTasks": [
+            "embeddings",
+            "automatic-speech-recognition",
+            "text-to-speech",
+            "translation",
+            "text-translation",
+            "question-answering",
+            "text-classification",
+            "fill-mask",
+            "token-classification",
+            "summarization",
+            "text-summarization",
+            "text-generation",
+            "image-classification",
+            "image-segmentation",
+            "object-detection",
+            "text-to-image",
+            "zero-shot-image-classification",
+            "table-question-answering",
+            "zero-shot-classification",
+            "conversational",
+            "text2text-generation",
+            "completions",
+            "chat-completion",
+            "multi-object-tracking",
+            "visual-question-answering",
+            "image-to-text",
+            "image-to-image",
+            "forecasting",
+            "audio-generation"
+        ],
+        "deploymentTypes":  ["maap-inference", "serverless-inference"],
+        "fineTuningTasks": [
+            "translation",
+            "question-answering",
+            "text-classification",
+            "token-classification",
+            "summarization",
+            "text-generation",
+            "image-classification",
+            "image-instance-segmentation",
+            "image-object-detection",
+            "chat-completion",
+            "video-multi-object-tracking",
+            "automatic-speech-recognition"
+        ],
+        "industryFilter": ["consumer-goods", "financial-services", "health-and-life-sciences", "manufacturing", "mobility"],
+        "Licenses": [
+            "apache-2.0",
+            "cc-by-4.0",
+            "mit",
+            "creativeml-openrail-m",
+            "openrail",
+            "afl-3.0",
+            "cc-by-nc-4.0",
+            "cc-by-nc-sa-4.0",
+            "cc-by-sa-4.0",
+            "gpl-3.0",
+            "bigscience-bloom-rail-1.0",
+            "bsd-3-clause",
+            "bigscience-openrail-m",
+            "agpl-3.0",
+            "bsd",
+            "cc-by-2.0",
+            "cc-by-nc-3.0",
+            "other",
+            "custom",
+            "llama2"
+        ]
+    }
+        
+        prompt = f"""
+        Users want to filter AI models based on some predefined categories. 
+        Given the following available categories and their values:
+        {json.dumps(system_context, indent=2)}
+
+        Map this user query to the most relevant category values: "{query}"
+        Return only a JSON object mapping categories to values. Include only relevant matches.
+        """
+        
+
+        messages=[
+                {"role": "system", "content": "You are a helper that maps queries to category values. Respond only with valid JSON."},
+                {"role": "user", "content": prompt}
+            ]
+        
+        return messages
+
+    
 
     def extract_followup_questions(self, content: Optional[str]):
         if content is None:
